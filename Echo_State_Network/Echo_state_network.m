@@ -5,6 +5,7 @@
 % Inspired by Mantas Lukosevicius' implementation: http://minds.jacobs-university.de/mantas/code
 
 clear;
+rand('seed', 42);
 
 % Load data
 data_file = importdata('../Data/BTC_data.csv');
@@ -12,84 +13,89 @@ data = data_file.data;
 [N, M] = size(data);
 
 % Split the available data into 3 sets: Initialization, training, and testing sets
-d_init = 150;                        % Initialization set
-d_train = floor((N-d_init)*0.5);     % Training set: Used for training the weights
-d_test = floor((N-d_init)*0.5);      % Testing set: Used to test the network
+d_init = 50;                        % Initialization set
+d_train = floor((N-d_init)*0.4);     % Training set: Used for training the weights
+d_test = floor((N-d_init)*0.6);      % Testing set: Used to test the network
 
 % Declare the ESN parameters
 n_in = 2;
-n_res = 500;
+n_res = 300;
 n_out = 1;
-a = 0.4;            % leaking rate
+a = 0.5;            % leaking rate
 
-% Declare a struct for storing the Network
-net.mse = 10000000;
+% Initialize Win and W
+Win = (rand(n_res,1+n_in)-0.5);
+W = rand(n_res,n_res)-0.5;
 
-rand('seed', 35);
-rep = 100;
+% Normalizing by using spectral radius
+opt.disp = 0;
+rhoW = abs(eigs(W,1,'LM',opt));
+W = W .* (1.25/rhoW);
 
-for n=1:rep
-    Win = (rand(n_res,1+n_in)-0.5);
-    W = rand(n_res,n_res)-0.5;
+% Allocate memory for the internal state matrix, X
+X = zeros(1+n_in+n_res,d_train);
 
-    % Normalizing by using spectral radius
-    opt.disp = 0;
-    rhoW = abs(eigs(W,1,'LM',opt));
-    W = W .* (1.25/rhoW);
-
-    % Allocating memory for the internal state matrix, X
-    X = zeros(1+n_in+n_res,d_train-d_init);
-
-    % Run the reservoir with the data and compute X
-    x = zeros(n_res,1)+1;
-    for t = 1:d_train
-        u = data(t,:)';
-        x = (1-a)*x + a*tanh(Win*[1;u] + W*x);
-        if t > d_init
-            X(:,t-d_init) = [1;u;x];
-        end
+% Run the reservoir with the data and compute X
+x = zeros(n_res,1)+1;
+for t = 1:d_init+d_train
+    u = data(t,:)';
+    x = (1-a)*x + a*tanh(Win*[1;u] + W*x);
+    if t > d_init
+        X(:,t-d_init) = [1;u;x];
     end
-
-    % Set the corresponding target matrix directly
-    Y = data(d_init+2:d_train+1);
-
-    % Train the Network
-    Wout = Y*pinv(X);
-
-    % Compute predictions
-    Y_hat = zeros(n_out,d_test);
-    u = data(d_train+1,:)';
-    for t = 1:d_test 
-        x = (1-a)*x + a*tanh(Win*[1;u] + W*x);
-        y = Wout*[1;u;x];
-        Y_hat(:,t) = y;
-        u = data(d_train+t+1,:)';
-    end
-    
-    % Compute MSE
-    mse = sum((data(d_train+2:d_train+d_test+1)-Y_hat(1,1:d_test)).^2)./d_test;
-    
-    % Check if new MSE is better than the previous
-    if mse < net.mse
-        disp(['Better network found with MSE ', num2str(mse)]);
-        net.mse = mse;
-        net.Win = Win;
-        net.W = W;
-        net.Wout = Wout;
-        net.Y_hat = Y_hat;
-    end
-    
-    disp(['Iteration ', num2str(n), ' completed']);
 end
 
+% Set the corresponding target matrix directly
+Y = data(d_init+2:d_init+d_train+1);
 
-% plot some signals
+% Train the Network
+Wout = Y*pinv(X);
+
+% Compute predictions
+Yh = zeros(n_out,d_test);
+u = data(d_init+d_train+1,:)';
+for t = 1:d_test 
+    x = (1-a)*x + a*tanh(Win*[1;u] + W*x);
+    yh = Wout*[1;u;x];
+    Yh(:,t) = yh;
+    u = data(d_init+d_train+1+t,:)';
+end
+
+% Compute MSE
+Y = data(d_init+d_train+2:d_init+d_train+d_test+1);
+mse = (sum((Y-Yh).^2))./d_test;
+
+disp(['MSE = ', num2str(mse)]);
+
+% Save the network
+net.Yh = Yh;
+net.Win = Win;
+net.W = W;
+net.Wout = Wout;
+net.mse = mse;
+
+Y = data(:,1);
+Yh = Yh'; Yh = padarray(Yh, N-d_test, 'pre');
+
+% Plotting the performance of the Final Network
 figure;
-plot(data(d_train+2:d_train+d_test+1));
+
+subplot(1,2,1);
+plot(Y);
 hold on;
-plot( net.Y_hat');
-title('Predicted vs. Actual Bitcoin Price Series');
+plot(Yh);
+xlim([N-d_test+1 N])
+title('Performance of ESN: Full testing period');
 xlabel('Day');
 ylabel('Price [USD]');
-legend('Actual Price', 'Predicted Price');
-hold off;
+legend('Actual price series', 'Predicted price series');
+
+subplot(1,2,2)
+plot(Y);
+hold on;
+plot(Yh);
+xlim([1900 1950])
+title('Performance of ESN: Subperiod of testing period');
+xlabel('Day');
+ylabel('Price [USD]');
+legend('Actual price series', 'Predicted price series');
