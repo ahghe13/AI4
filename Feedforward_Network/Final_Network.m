@@ -6,7 +6,7 @@
 clear;
 
 % Read data
-data_file = importdata('~/Dropbox/Uni/9. semester/AI4/Data/BTC_data.csv');
+data_file = importdata('../Data/BTC_data.csv');
 data = data_file.data;
 
 % Set window size and select sequence C
@@ -25,7 +25,7 @@ for i=1:rep
     if perf_tmp < perf
         perf = perf_tmp;
         net = net_tmp;
-        disp(['Better Network found with MSE ', num2str(perf) , '! Iteration ', num2str(i), ' out of ', num2str(n)])
+        disp(['Better Network found with MSE ', num2str(perf) , '! Iteration ', num2str(i), ' out of ', num2str(rep)])
     end
 end
 

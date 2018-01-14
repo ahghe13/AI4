@@ -8,7 +8,7 @@ clear;
 itr = 500;
 w_size = 10;
 
-data_file = importdata('~/Dropbox/Uni/9. semester/AI4/Data/BTC_data.csv');
+data_file = importdata('../Data/BTC_data.csv');
 data = data_file.data;
 [N, M] = size(data);
 
